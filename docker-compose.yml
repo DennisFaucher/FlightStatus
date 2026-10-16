@@ -1,0 +1,16 @@
+services:
+  flightstatus:
+    build: .
+    container_name: flightstatus
+    restart: unless-stopped
+    ports:
+      - "40074:8000"
+    volumes:
+      - ./data:/data
+      - ./.users:/app/.users:ro
+      - ./.env:/app/.env:ro
+    environment:
+      - TZ=America/New_York
+      - DATA_DIR=/data
+      - USERS_FILE=/app/.users
+      - PORT=8000

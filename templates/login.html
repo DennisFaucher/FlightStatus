@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Flight Status</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-page">
+  <form class="login-card" method="post">
+    <h1>Flight Status</h1>
+    <p class="muted">Sign in to continue</p>
+    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+    <label>
+      Username
+      <input type="text" name="username" autocomplete="username" autofocus required>
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="primary">Sign in</button>
+  </form>
+</body>
+</html>

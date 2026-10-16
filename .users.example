@@ -1,0 +1,9 @@
+# Flight Status accounts — one account per line:
+#
+#   username:password:email
+#
+# The email is optional; when present it receives that user's flight alerts.
+# Copy this file to `.users` and replace the placeholders. Keep `.users` out of
+# version control — it is already listed in .gitignore.
+#
+youruser:changeme:you@example.com

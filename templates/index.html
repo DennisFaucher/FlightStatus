@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flight Status</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">✈ Flight Status</div>
+    <div class="topbar-right">
+      <span id="usage" class="usage muted"></span>
+      <span id="alerts" class="usage muted"></span>
+      <button type="button" id="test-email" class="ghost hidden">Send test email</button>
+      <span class="muted">{{ user }}</span>
+      <a class="link" href="{{ url_for('logout') }}">Sign out</a>
+    </div>
+  </header>
+
+  <main>
+    <div id="banner" class="banner hidden"></div>
+
+    <form id="add-form" class="add-card" autocomplete="off">
+      <div class="field">
+        <label for="date">Date</label>
+        <input type="date" id="date" name="date" required>
+      </div>
+      <div class="field grow">
+        <label for="ident">Flight number</label>
+        <input type="text" id="ident" name="ident" placeholder="e.g. UA123 or UAL123"
+               spellcheck="false" autocapitalize="characters" required>
+      </div>
+      <button type="submit" class="primary">Track flight</button>
+    </form>
+    <div id="message" class="message hidden"></div>
+
+    <section id="flights" class="flights"></section>
+    <div id="empty" class="empty hidden">
+      <p>No flights tracked yet. Add a flight number and date above.</p>
+    </div>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
