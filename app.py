@@ -319,6 +319,16 @@ def _worker():
                     store = load_store()
                     now_ts = time.time()
                     changed = False
+                    today = _today()
+                    if store.get("last_prune_date") != today:
+                        before = len(store["flights"])
+                        store["flights"] = [
+                            f for f in store["flights"] if not f.get("final")
+                        ]
+                        if len(store["flights"]) != before:
+                            changed = True
+                        store["last_prune_date"] = today
+                        changed = True
                     for flight in store["flights"]:
                         if should_fetch(flight, now_ts):
                             perform_fetch(store, flight)
@@ -561,7 +571,10 @@ def favicon():
 def api_flights():
     with STATE_LOCK:
         store = load_store()
-        flights = [public_flight(f) for f in store["flights"]]
+        current = current_user()
+        flights = [
+            public_flight(f) for f in store["flights"] if f.get("owner") == current
+        ]
         calls_today = _aero_calls_today(store)
     flights.sort(key=lambda f: (f["date"], (f.get("data") or {}).get("scheduled_out") or ""))
     return jsonify(
@@ -678,7 +691,10 @@ def api_delete_flight(flight_id):
     with STATE_LOCK:
         store = load_store()
         before = len(store["flights"])
-        store["flights"] = [f for f in store["flights"] if f["id"] != flight_id]
+        current = current_user()
+        store["flights"] = [
+            f for f in store["flights"] if not (f["id"] == flight_id and f.get("owner") == current)
+        ]
         if len(store["flights"]) == before:
             return jsonify({"error": "Flight not found"}), 404
         save_store(store)
@@ -692,6 +708,8 @@ def api_refresh_flight(flight_id):
         store = load_store()
         for f in store["flights"]:
             if f["id"] == flight_id:
+                if f.get("owner") and f.get("owner") != current_user():
+                    return jsonify({"error": "Not authorized"}), 403
                 f["refresh_requested"] = True
                 f["final"] = False
                 save_store(store)

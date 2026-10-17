@@ -20,6 +20,10 @@ the free monthly credit.
   Each flight's alerts go to the person who added it.
 - **Multi-user** — a simple file-based login; every tracked flight records its
   owner.
+- **Per-user visibility** — each user sees only the flights they added; delete
+  and refresh are owner-only.
+- **Auto-cleanup** — completed flights (arrived, cancelled or overdue) are
+  pruned at the next day's rollover, not before.
 - **Budget guardrails** — an adaptive refresh schedule plus a hard daily call
   cap, and an email when the cap is reached.
 - **Graceful fallback** — falls back to [airframes.io](https://airframes.io)
@@ -37,7 +41,9 @@ also keeps API usage predictable.
 
 Flight data is fetched from AeroAPI (falling back to airframes.io), normalised to
 a common shape, and stored alongside an alert snapshot so changes can be diffed
-between refreshes.
+between refreshes. The same worker prunes completed flights once the UTC day
+rolls over, so the dashboard stays clean without ever dropping a flight on the
+day it landed.
 
 Dates are interpreted as the **local date at the departure airport** — the way a
 passenger thinks about "the flight on the 16th" — even though the upstream APIs
@@ -130,10 +136,10 @@ the app uses the airline schedule endpoint, which provides times but not gates.
 | `GET` | `/` | Dashboard (requires login). |
 | `GET` | `/login`, `/logout` | Session login/logout. |
 | `GET` | `/healthz` | Liveness probe → `{"status":"ok"}`. |
-| `GET` | `/api/flights` | List tracked flights + current data. |
+| `GET` | `/api/flights` | List your flights + current data (only flights you added). |
 | `POST` | `/api/flights` | Add a flight (`{"ident": "...", "date": "YYYY-MM-DD"}`). |
-| `DELETE` | `/api/flights/<id>` | Stop tracking a flight. |
-| `POST` | `/api/flights/<id>/refresh` | Force an immediate refresh. |
+| `DELETE` | `/api/flights/<id>` | Stop tracking a flight (owner only; 404 if not yours). |
+| `POST` | `/api/flights/<id>/refresh` | Force an immediate refresh (owner only; 403 if not yours). |
 | `POST` | `/api/test-email` | Send a test alert email. |
 
 ## Project layout
