@@ -8,6 +8,8 @@ Built around the [FlightAware AeroAPI](https://www.flightaware.com/aeroapi)
 personal plan, so refresh is deliberately lazy and adaptive to keep you inside
 the free monthly credit.
 
+<img width="947" height="724" alt="image" src="https://github.com/user-attachments/assets/55371572-b686-42ea-9306-b4b5de0c244f" />
+
 ## Features
 
 - **Track any flight by number and date** — IATA (`EI136`) or ICAO (`EIN136`)
