@@ -641,8 +641,9 @@ def api_add_flight():
 
     with STATE_LOCK:
         store = load_store()
+        current = current_user()
         for f in store["flights"]:
-            if f["ident"] == ident and f["date"] == date_str:
+            if f["ident"] == ident and f["date"] == date_str and f.get("owner") == current:
                 return jsonify({"error": "That flight is already tracked"}), 409
         flight = {
             "id": uuid.uuid4().hex,
