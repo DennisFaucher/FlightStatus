@@ -643,7 +643,7 @@ def api_add_flight():
         store = load_store()
         for f in store["flights"]:
             if f["ident"] == ident and f["date"] == date_str:
-                return jsonify({"error": "That flight is already in the list"}), 409
+                return jsonify({"error": "That flight is already tracked"}), 409
         flight = {
             "id": uuid.uuid4().hex,
             "ident": ident,
