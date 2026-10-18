@@ -48,7 +48,18 @@ def default_recipient():
     return _cfg("MAIL_TO") or _cfg("MAIL_FROM") or _cfg("MAIL_USERNAME") or None
 
 
-def send(to_addr, subject, text_body, html_body=None):
+def _normalize_cc(cc):
+    if not cc:
+        return []
+    addrs = [a.strip() for a in re.split(r"[,\s;]+", str(cc)) if a.strip()]
+    out = []
+    for a in addrs:
+        if "@" in a:
+            out.append(a)
+    return out
+
+
+def send(to_addr, subject, text_body, html_body=None, cc=None):
     if not configured():
         raise MailError("SMTP is not configured (MAIL_HOST / MAIL_USERNAME / MAIL_PASSWORD)")
     if not to_addr or "@" not in to_addr:
@@ -57,20 +68,19 @@ def send(to_addr, subject, text_body, html_body=None):
     host = _cfg("MAIL_HOST")
     smtp_port = port()
     user = _cfg("MAIL_USERNAME")
-    # Google prints app passwords in groups of four; it ignores the spaces, so
-    # normalize them away in case the value is pasted with them (or as a stray
-    # tab/newline).
     password = re.sub(r"\s+", "", _cfg("MAIL_PASSWORD"))
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = from_address()
     msg["To"] = to_addr
+    cc_list = _normalize_cc(cc)
+    if cc_list:
+        msg["Cc"] = ", ".join(cc_list)
     msg.attach(MIMEText(text_body, "plain", "utf-8"))
     if html_body:
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    context = ssl.create_default_context()
     try:
         if smtp_port == 465:
             with smtplib.SMTP_SSL(host, smtp_port, timeout=30, context=context) as smtp:

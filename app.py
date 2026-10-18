@@ -371,8 +371,9 @@ def _send_alert(flight, rendered):
     recipient = _mail_ready(flight)
     if not recipient:
         return "skip"
+    cc = flight.get("cc")
     try:
-        mailer.send(recipient, subject, text, html_body)
+        mailer.send(recipient, subject, text, html_body, cc=cc)
         return "sent"
     except mailer.MailError as exc:
         log.warning("alert for %s not sent: %s", flight.get("ident"), exc)
@@ -540,6 +541,7 @@ def public_flight(flight):
         "final": bool(flight.get("final")),
         "refresh_requested": bool(flight.get("refresh_requested")),
         "data": flight.get("data"),
+        "cc": flight.get("cc"),
     }
 
 
@@ -658,6 +660,7 @@ def api_add_flight():
             "refresh_requested": True,
             "data": None,
             "error": None,
+            "cc": (payload.get("cc") if payload and payload.get("cc") else None),
         }
 
         # Verify the flight actually departs on that date before storing it,
