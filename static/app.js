@@ -122,6 +122,7 @@ function cardHtml(f, nowIso) {
   const source = d.source ? `source: ${esc(d.source)}` : '';
   const err = f.error ? `<span class="card-error">${esc(f.error)}</span>` : '';
 
+  const ccHtml = f.cc ? `<div class="card-cc">CC: ${esc(f.cc)}</div>` : '';
   return `<article class="card" data-id="${f.id}">
     <div class="card-head">
       <span class="card-ident">${esc(ident)}</span>
@@ -134,6 +135,7 @@ function cardHtml(f, nowIso) {
       ${endpointHtml('Arrival', dest, d, 'in', nowIso)}
     </div>
     ${progress}
+    ${ccHtml}
     <div class="card-foot">
       ${d.aircraft_type ? `<span>${esc(d.aircraft_type)}</span>` : ''}
       ${d.registration ? `<span>${esc(d.registration)}</span>` : ''}
@@ -214,17 +216,19 @@ async function addFlight(ev) {
   ev.preventDefault();
   const ident = el('ident').value.trim();
   const date = el('date').value;
+  const cc = el('cc').value.trim();
   const btn = ev.target.querySelector('button[type="submit"]');
   btn.disabled = true;
   try {
     const res = await fetch('/api/flights', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ident, date }),
+      body: JSON.stringify({ ident, date, cc }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { showMessage(body.error || 'Could not add flight', false); return; }
     el('ident').value = '';
+    el('cc').value = '';
     showMessage('Flight added. Status will appear shortly.', true);
     fetchFlights();
   } finally {
