@@ -8,7 +8,7 @@ Built around the [FlightAware AeroAPI](https://www.flightaware.com/aeroapi)
 personal plan, so refresh is deliberately lazy and adaptive to keep you inside
 the free monthly credit.
 
-<img width="947" height="724" alt="image" src="https://github.com/user-attachments/assets/55371572-b686-42ea-9306-b4b5de0c244f" />
+<img width="944" height="468" alt="image" src="https://github.com/user-attachments/assets/dae8a465-e8b9-4bd0-a4df-985bfa0c0344" />
 
 ## Features
 
