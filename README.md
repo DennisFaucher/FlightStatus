@@ -20,6 +20,7 @@ the free monthly credit.
 - **Email alerts** — sent when a flight's status changes, when its
   gate/terminal changes, and a "leaving soon" reminder before departure.
   Each flight's alerts go to the person who added it.
+- **CC emails** — optional comma-separated addresses to CC on every alert for a flight.
 - **Multi-user** — a simple file-based login; every tracked flight records its
   owner.
 - **Per-user visibility** — each user sees only the flights they added; delete
@@ -113,6 +114,9 @@ When SMTP is configured, alerts are sent for:
 - **Gate / terminal changes** — at either end of the flight.
 - **Leaving soon** — a reminder `ALERT_LEAD_MINUTES` before departure.
 
+Each flight can also list additional CC email addresses (comma-separated) when
+added; these are included on all alert emails for that flight.
+
 Duplicate notifications are suppressed by diffing against the previous snapshot.
 For Gmail, create an [App Password](https://myaccount.google.com/apppasswords)
 (requires 2-Step Verification); the spaces Google shows between the groups are
@@ -139,7 +143,7 @@ the app uses the airline schedule endpoint, which provides times but not gates.
 | `GET` | `/login`, `/logout` | Session login/logout. |
 | `GET` | `/healthz` | Liveness probe → `{"status":"ok"}`. |
 | `GET` | `/api/flights` | List your flights + current data (only flights you added). |
-| `POST` | `/api/flights` | Add a flight (`{"ident": "...", "date": "YYYY-MM-DD"}`). |
+| `POST` | `/api/flights` | Add a flight (`{"ident": "...", "date": "YYYY-MM-DD", "cc": "a@b.com,c@d.com"}`). |
 | `DELETE` | `/api/flights/<id>` | Stop tracking a flight (owner only; 404 if not yours). |
 | `POST` | `/api/flights/<id>/refresh` | Force an immediate refresh (owner only; 403 if not yours). |
 | `POST` | `/api/test-email` | Send a test alert email. |
