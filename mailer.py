@@ -81,6 +81,9 @@ def send(to_addr, subject, text_body, html_body=None, cc=None):
     if html_body:
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+    # Verify the server certificate and use a modern TLS default for both
+    # implicit TLS (465) and STARTTLS (587).
+    context = ssl.create_default_context()
     try:
         if smtp_port == 465:
             with smtplib.SMTP_SSL(host, smtp_port, timeout=30, context=context) as smtp:

@@ -73,6 +73,14 @@ AERO_MIN_INTERVAL = _env_int("AEROAPI_MIN_INTERVAL_SECONDS", 7)
 AERO_MAX_DAILY = _env_int("AEROAPI_MAX_DAILY_CALLS", 30)
 WORKER_INTERVAL = 10
 
+# Consecutive-failure backoff for a single flight (seconds), so one flight that
+# keeps erroring cannot spin the worker every tick.
+FETCH_BACKOFF_SECONDS = (300, 900, 3600, 10800, 21600)
+
+# Minimum gap between repeated "refresh worker error" tracebacks, so a
+# persistent fault cannot emit one log entry per worker tick.
+WORKER_ERROR_LOG_INTERVAL = 300
+
 ALERT_LEAD_MINUTES = _env_int("ALERT_LEAD_MINUTES", 120)
 ALERT_RETRY_SECONDS = _env_int("ALERT_RETRY_SECONDS", 300)
 ALERT_MAX_RETRIES = 5
@@ -173,6 +181,10 @@ def should_fetch(flight, now_ts):
         return True
     if flight.get("final"):
         return False
+    # Honour failure backoff before anything else, so a flight that keeps
+    # raising is not retried on every worker tick.
+    if now_ts < float(flight.get("next_fetch_ts") or 0):
+        return False
     last_fetched = flight.get("last_fetched_ts") or 0
     if not flight.get("data"):
         return now_ts - (flight.get("last_attempt_ts") or 0) >= 300
@@ -207,22 +219,45 @@ def _not_found_message(ident, date_str):
     )
 
 
+def _record_fetch_failure(flight, now_ts):
+    """Count a failed fetch and schedule the next attempt with backoff.
+
+    Without this a flight that raises on every attempt is re-fetched on the
+    next worker tick (10s), which produces an unbounded error loop.
+    """
+    fails = int(flight.get("fetch_fail_count") or 0) + 1
+    flight["fetch_fail_count"] = fails
+    # 5m, 15m, 1h, 3h, then 6h — index clamped to the last entry.
+    idx = min(fails - 1, len(FETCH_BACKOFF_SECONDS) - 1)
+    delay = FETCH_BACKOFF_SECONDS[idx]
+    flight["next_fetch_ts"] = now_ts + delay
+    return delay
+
+
 def perform_fetch(store, flight):
-    """Query providers for one flight and update it in place."""
+    """Query providers for one flight and update it in place.
+
+    Returns True when the flight's stored state was modified, so the caller
+    only rewrites the store when something actually moved.
+    """
     use_aero = bool(providers.aero_key())
     if use_aero:
         if _aero_calls_today(store) >= AERO_MAX_DAILY:
-            flight["error"] = (
-                f"Daily AeroAPI limit of {AERO_MAX_DAILY} calls reached; "
-                "will resume tomorrow"
-            )
-            flight["last_attempt_ts"] = time.time()
+            flight["error"] = "Daily AeroAPI limit reached; will resume tomorrow"
+            # Clear the manual-refresh flag and record the deferral against
+            # last_fetched_ts, so should_fetch() waits out the normal TTL
+            # instead of re-checking every 5 minutes and rewriting the store
+            # on every worker tick.
+            now_ts = time.time()
+            flight["last_attempt_ts"] = now_ts
+            flight["last_fetched_ts"] = now_ts
             flight["refresh_requested"] = False
-            return
+            return True
         _respect_rate_limit()
         calls = store.setdefault("aero_calls", {})
         calls[_today()] = calls.get(_today(), 0) + 1
 
+    failed = False
     try:
         data = providers.lookup(flight["ident"], flight["date"])
         flight["data"] = data
@@ -231,9 +266,14 @@ def perform_fetch(store, flight):
         else:
             flight["error"] = _not_found_message(flight["ident"], flight["date"])
     except providers.ProviderError as exc:
+        # Expected upstream problems (503, rate limit, bad key): a legitimate
+        # answer, not a bug, so no traceback. Backoff still applies.
+        failed = True
+        log.warning("fetch failed for %s: %s", flight.get("ident"), exc)
         flight["error"] = str(exc)
         data = flight.get("data")
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # defensive - unexpected bug in our own code
+        failed = True
         log.exception("unexpected error fetching %s", flight.get("ident"))
         flight["error"] = f"Lookup failed: {exc}"
         data = flight.get("data")
@@ -243,8 +283,20 @@ def perform_fetch(store, flight):
     flight["last_fetched"] = datetime.now(timezone.utc).isoformat()
     flight["last_attempt_ts"] = now_ts
     flight["refresh_requested"] = False
+    if failed:
+        delay = _record_fetch_failure(flight, now_ts)
+        log.info(
+            "next attempt for %s in %ss (failure %s)",
+            flight.get("ident"),
+            delay,
+            flight["fetch_fail_count"],
+        )
+    else:
+        flight["fetch_fail_count"] = 0
+        flight["next_fetch_ts"] = 0
     if flight.get("data"):
         flight["final"] = compute_final(flight["data"], now_ts)
+    return True
 
 
 def _notify_aero_limit(store, now_ts):
@@ -312,6 +364,7 @@ def _acquire_worker_lock():
 
 
 def _worker():
+    last_error_log = 0.0
     while True:
         try:
             if _acquire_worker_lock():
@@ -331,8 +384,8 @@ def _worker():
                         changed = True
                     for flight in store["flights"]:
                         if should_fetch(flight, now_ts):
-                            perform_fetch(store, flight)
-                            changed = True
+                            if perform_fetch(store, flight):
+                                changed = True
                         if _apply_alerts(flight, now_ts):
                             changed = True
                     if _notify_aero_limit(store, now_ts):
@@ -340,7 +393,13 @@ def _worker():
                     if changed:
                         save_store(store)
         except Exception:  # pragma: no cover - keep the worker alive
-            log.exception("refresh worker error")
+            # The per-flight backoff above stops a poison flight spinning the
+            # worker, but this is the last-ditch net: rate-limit the traceback
+            # so a persistent fault cannot fill the log with one entry per tick.
+            now = time.time()
+            if now - last_error_log >= WORKER_ERROR_LOG_INTERVAL:
+                log.exception("refresh worker error")
+                last_error_log = now
         time.sleep(WORKER_INTERVAL)
 
 
