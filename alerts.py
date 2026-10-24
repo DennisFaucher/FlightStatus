@@ -32,6 +32,15 @@ SNAPSHOT_FIELDS = ("status", "cancelled", "diverted") + tuple(
     f for f, _, _ in TIME_FIELDS
 ) + tuple(f for f, _ in GATE_FIELDS)
 
+# Which change to lead the subject line with: a diversion or reroute first,
+# then status, cancellations and diversions, then times, and gate/terminal
+# moves last.
+SUBJECT_ORDER = (
+    ("Diverted", "Destination", "Status", "Cancellation")
+    + tuple(label for _, label, _ in TIME_FIELDS)
+    + tuple(label for _, label in GATE_FIELDS)
+)
+
 # Ignore estimated-time jitter below this (minutes).
 TIME_CHANGE_MINUTES = 5
 LATE_THRESHOLD_MINUTES = 15
@@ -64,22 +73,24 @@ def _fmt_time(value, tz_name):
     return f"{stamp} {dt.tzname()}" if dt.tzname() else stamp
 
 
+def airport_code(ref):
+    """Shortest stable code for an airport ref (IATA, else ICAO)."""
+    if not isinstance(ref, dict):
+        return ""
+    return (ref.get("iata") or ref.get("code") or ref.get("icao") or "").upper()
+
+
 def route(data):
-    origin = (data.get("origin") or {}) if isinstance(data.get("origin"), dict) else {}
-    dest = (
-        data.get("destination") or {}
-        if isinstance(data.get("destination"), dict)
-        else {}
-    )
-    return (
-        origin.get("iata") or origin.get("code") or "",
-        dest.get("iata") or dest.get("code") or "",
-    )
+    return (airport_code(data.get("origin")), airport_code(data.get("destination")))
 
 
 def snapshot(data):
     data = data or {}
-    return {key: data.get(key) for key in SNAPSHOT_FIELDS}
+    snap = {key: data.get(key) for key in SNAPSHOT_FIELDS}
+    # Nested airport objects are flattened to a code: a changed arrival airport
+    # is how a diversion shows up when the upstream `diverted` flag stays false.
+    snap["destination"] = airport_code(data.get("destination"))
+    return snap
 
 
 def build_changes(prev, cur, data):
@@ -88,6 +99,19 @@ def build_changes(prev, cur, data):
     tz_out = _tz_of(data, "origin")
     tz_in = _tz_of(data, "destination")
     changes = []
+
+    # A diversion is usually published as a new destination airport (AeroAPI's
+    # `diverted` flag can stay false), so compare the flattened airport codes.
+    # Only alert once the flight has left: before departure this is just a
+    # schedule change.
+    old_dest = (prev.get("destination") or "").strip()
+    new_dest = (cur.get("destination") or "").strip()
+    dest_changed = bool(old_dest and new_dest and old_dest != new_dest)
+    if dest_changed:
+        if data.get("actual_out") or data.get("diverted"):
+            changes.append(f"Diverted to {new_dest} (was {old_dest})")
+        else:
+            changes.append(f"Destination: {old_dest} → {new_dest}")
 
     old_status = prev.get("status") or ""
     new_status = cur.get("status") or ""
@@ -132,7 +156,7 @@ def build_changes(prev, cur, data):
 
     if bool(prev.get("cancelled")) != bool(cur.get("cancelled")):
         changes.append("Cancellation: yes" if cur.get("cancelled") else "Cancellation: no")
-    if bool(prev.get("diverted")) != bool(cur.get("diverted")):
+    if not dest_changed and bool(prev.get("diverted")) != bool(cur.get("diverted")):
         changes.append("Diverted: yes" if cur.get("diverted") else "Diverted: no")
 
     return changes
@@ -183,11 +207,37 @@ def _flat(value):
     return text
 
 
+def _subject_phrase(change):
+    """Phrase a change for a subject line.
+
+    A terminal/gate that was published for the first time arrives as
+    "Arrival terminal: not assigned → E". Leading a subject with the empty side
+    reads as though the terminal is missing, so first assignments become
+    "Arrival terminal E"; real reassignments keep the before → after form.
+    """
+    label, sep, rest = change.partition(":")
+    if not sep:
+        return change
+    old, arrow, new = rest.strip().partition(" → ")
+    if arrow and old == "not assigned" and new and new != "not assigned":
+        return f"{label} {new}"
+    return change
+
+
+def _subject_change(changes):
+    """Pick the most newsworthy change, phrased for the subject line."""
+    for label in SUBJECT_ORDER:
+        for change in changes:
+            if change == label or change.startswith((label + ":", label + " ")):
+                return _subject_phrase(change)
+    return changes[0]
+
+
 def render_changes(flight, data, changes):
     ident = _ident(data, flight.get("ident"))
     dep, arr = route(data)
     route_txt = f"{dep}→{arr}" if dep and arr else ""
-    head = changes[0]
+    head = _subject_change(changes)
     subject = f"[Flight Status] {ident} {route_txt}: {head}".strip()
     subject = re.sub(r"\s+", " ", subject)
 
@@ -299,6 +349,6 @@ def _shell(heading, inner):
   <div style="font-size:17px;font-weight:600;margin-bottom:14px">{esc(heading)}</div>
   {inner}
   <div style="margin-top:16px;font-size:12px;color:#6b7280">
-    Sent by your self-hosted Flight Status tracker.
+    Sent with love by Dennis and the Plex Flight Status tracker.
   </div>
 </div></body></html>"""

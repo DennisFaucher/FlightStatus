@@ -130,6 +130,7 @@ button.ghost:hover { border: none; color: var(--accent); filter: brightness(1.15
 .card-ident { font-size: 1.2rem; font-weight: 700; }
 .card-airline { color: var(--muted); font-size: 0.9rem; }
 .card-route { color: var(--muted); font-size: 0.95rem; margin-left: auto; }
+.card-was { color: var(--muted); font-size: 0.85rem; }
 .spacer { flex: 1; }
 
 .badge {

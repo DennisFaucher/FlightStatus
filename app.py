@@ -219,6 +219,34 @@ def _not_found_message(ident, date_str):
     )
 
 
+def _remember_expected_destination(flight, data):
+    """Record the arrival airport the flight is planned to use.
+
+    A diversion changes the current destination but not this value, so the UI
+    can still show where the flight was supposed to land. Captured once, on the
+    first successful lookup, so a later diversion cannot rewrite it.
+    """
+    if not data or flight.get("expected_destination"):
+        return
+    destination = data.get("destination")
+    if isinstance(destination, dict) and alerts.airport_code(destination):
+        flight["expected_destination"] = dict(destination)
+
+
+def _is_diverted(flight):
+    """True when the flight is (or was) headed somewhere other than planned."""
+    data = flight.get("data") or {}
+    if data.get("diverted"):
+        return True
+    expected_code = alerts.airport_code(flight.get("expected_destination"))
+    current_code = alerts.airport_code(data.get("destination"))
+    if not (expected_code and current_code) or expected_code == current_code:
+        return False
+    # Before departure a destination change is a schedule change, not a
+    # diversion.
+    return bool(data.get("actual_out"))
+
+
 def _record_fetch_failure(flight, now_ts):
     """Count a failed fetch and schedule the next attempt with backoff.
 
@@ -261,6 +289,7 @@ def perform_fetch(store, flight):
     try:
         data = providers.lookup(flight["ident"], flight["date"])
         flight["data"] = data
+        _remember_expected_destination(flight, data)
         if data:
             flight["error"] = None
         else:
@@ -601,6 +630,8 @@ def public_flight(flight):
         "refresh_requested": bool(flight.get("refresh_requested")),
         "data": flight.get("data"),
         "cc": flight.get("cc"),
+        "diverted": _is_diverted(flight),
+        "expected_destination": flight.get("expected_destination"),
     }
 
 
@@ -736,6 +767,7 @@ def api_add_flight():
                 return jsonify({"error": _not_found_message(ident, date_str)}), 404
             now_ts = time.time()
             flight["data"] = data
+            _remember_expected_destination(flight, data)
             flight["final"] = compute_final(data, now_ts)
             flight["last_fetched"] = datetime.now(timezone.utc).isoformat()
             flight["last_fetched_ts"] = now_ts

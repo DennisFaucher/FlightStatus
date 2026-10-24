@@ -65,9 +65,12 @@ function endpointHtml(label, airport, data, prefix, nowIso) {
   const scheduled = data['scheduled_' + prefix];
   const estimated = data['estimated_' + prefix];
   const actual = data['actual_' + prefix];
+  const wheels = data['actual_' + (prefix === 'out' ? 'off' : 'on')];
   const tz = (airport && airport.timezone) || null;
-  const display = actual || estimated || scheduled;
-  const displayKind = actual ? 'Actual' : estimated ? 'Estimated' : 'Scheduled';
+  const display = actual || wheels || estimated || scheduled;
+  const displayKind = actual ? 'Actual'
+    : wheels ? (prefix === 'out' ? 'Takeoff' : 'Touchdown')
+    : estimated ? 'Estimated' : 'Scheduled';
 
   const code = (airport && (airport.iata || airport.code)) || '—';
   const name = (airport && airport.city) || (airport && airport.name) || '';
@@ -111,7 +114,15 @@ function cardHtml(f, nowIso) {
   const d = f.data || {};
   const origin = d.origin || {};
   const dest = d.destination || {};
-  const route = (origin.iata || origin.code || '???') + ' → ' + (dest.iata || dest.code || '???');
+  const expected = f.expected_destination || {};
+  const destCode = dest.iata || dest.code || '';
+  const expectedCode = expected.iata || expected.code || '';
+  const diverted = !!f.diverted;
+  const route = (origin.iata || origin.code || '???') + ' → ' + (destCode || '???');
+  const routeNote = (diverted && expectedCode && expectedCode !== destCode)
+    ? ` <span class="card-was">(was ${esc(expectedCode)})</span>` : '';
+  const diversionBadge = diverted
+    ? `<span class="badge bad">Diverted${destCode ? ' to ' + esc(destCode) : ''}</span>` : '';
   const ident = d.ident || f.ident;
   const status = d.status || (d.cancelled ? 'Cancelled' : f.error ? 'No data' : 'Scheduled');
 
@@ -127,8 +138,9 @@ function cardHtml(f, nowIso) {
     <div class="card-head">
       <span class="card-ident">${esc(ident)}</span>
       <span class="badge ${statusClass(status)}">${esc(status)}</span>
+      ${diversionBadge}
       ${d.airline ? `<span class="card-airline">${esc(d.airline)}</span>` : ''}
-      <span class="card-route">${esc(route)}</span>
+      <span class="card-route">${esc(route)}${routeNote}</span>
     </div>
     <div class="times">
       ${endpointHtml('Departure', origin, d, 'out', nowIso)}
