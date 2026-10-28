@@ -36,10 +36,114 @@ SNAPSHOT_FIELDS = ("status", "cancelled", "diverted") + tuple(
 # then status, cancellations and diversions, then times, and gate/terminal
 # moves last.
 SUBJECT_ORDER = (
-    ("Diverted", "Destination", "Status", "Cancellation")
+    ("Diverted", "Destination", "Landed", "Arrival", "Departure", "Status", "Cancellation")
     + tuple(label for _, label, _ in TIME_FIELDS)
     + tuple(label for _, label in GATE_FIELDS)
 )
+
+
+def _simplify_subject(change, data):
+    """Simplify change to a short subject phrase."""
+    data = data or {}
+    
+    # Diversion
+    if change.startswith("Diverted"):
+        return "Diverted"
+    
+    label, sep, rest = change.partition(":")
+    if not sep:
+        return change
+    
+    old, arrow, new = rest.strip().partition(" → ")
+    
+    # Departure/arrival times
+    if label == "Actual departure" or label == "Estimated departure" or label == "Scheduled departure":
+        # Check if it's departure related
+        if "Actual departure" in change or data.get("actual_out"):
+            # Calculate if early/late/on-time vs scheduled
+            actual = _parse(data.get("actual_out"))
+            sched = _parse(data.get("scheduled_out"))
+            if actual and sched:
+                delta_min = (actual - sched).total_seconds() / 60
+                if delta_min <= 2:
+                    return "On-Time Departure"
+                elif delta_min < 0:
+                    return "Early Departure"
+                else:
+                    return "Late Departure"
+            return "Departure"
+        elif arrow and old and new:
+            # Time change
+            old_dt, new_dt = _parse(old.split("(")[0].strip()) if "(" not in old else None, _parse(new.split("(")[0].strip()) if "(" not in new else None
+            # Try to parse from the formatted strings is complex; simpler approach
+            if "earlier" in new:
+                return "Early Departure"
+            elif "later" in new:
+                return "Late Departure"
+            else:
+                return "Departure"
+        return "Departure"
+    
+    if label == "Actual arrival" or label == "Estimated arrival" or label == "Scheduled arrival":
+        if "Actual arrival" in change or data.get("actual_in"):
+            actual = _parse(data.get("actual_in"))
+            sched = _parse(data.get("scheduled_in"))
+            if actual and sched:
+                delta_min = (actual - sched).total_seconds() / 60
+                if delta_min <= 2:
+                    return "On-Time Arrival"
+                elif delta_min < 0:
+                    return "Early Arrival"
+                else:
+                    return "Late Arrival"
+            return "Landed"
+        elif arrow:
+            if "earlier" in new:
+                return "Early Arrival"
+            elif "later" in new:
+                return "Late Arrival"
+            else:
+                return "Arrival"
+        return "Arrival"
+    
+    # Status-based
+    if label == "Status":
+        status_lower = new.lower() if new else old.lower()
+        if "landed" in status_lower or "arrived" in status_lower:
+            actual = _parse(data.get("actual_in"))
+            sched = _parse(data.get("scheduled_in"))
+            if actual and sched:
+                delta_min = (actual - sched).total_seconds() / 60
+                if delta_min <= 2:
+                    return "On-Time Arrival"
+                elif delta_min < 0:
+                    return "Early Arrival"
+                else:
+                    return "Late Arrival"
+            return "Landed"
+        if "depart" in status_lower and "landed" not in status_lower and "arriv" not in status_lower:
+            actual = _parse(data.get("actual_out"))
+            sched = _parse(data.get("scheduled_out"))
+            if actual and sched:
+                delta_min = (actual - sched).total_seconds() / 60
+                if delta_min <= 2:
+                    return "On-Time Departure"
+                elif delta_min < 0:
+                    return "Early Departure"
+                else:
+                    return "Late Departure"
+            return "Departure"
+    
+    # Cancellation
+    if label == "Cancellation":
+        if new and "yes" in new.lower():
+            return "Cancelled"
+        return change
+    
+    # Default to original simplified form for gates/terminals
+    if arrow and old == "not assigned" and new and new != "not assigned":
+        return f"{label} {new}"
+    return change
 
 # Ignore estimated-time jitter below this (minutes).
 TIME_CHANGE_MINUTES = 5
@@ -237,7 +341,7 @@ def render_changes(flight, data, changes):
     ident = _ident(data, flight.get("ident"))
     dep, arr = route(data)
     route_txt = f"{dep}→{arr}" if dep and arr else ""
-    head = _subject_change(changes)
+    head = _simplify_subject(_subject_change(changes), data)
     subject = f"[Flight Status] {ident} {route_txt}: {head}".strip()
     subject = re.sub(r"\s+", " ", subject)
 
