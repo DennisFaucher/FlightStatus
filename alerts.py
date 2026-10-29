@@ -104,6 +104,7 @@ def _simplify_subject(change, data):
     # Status-based
     if label == "Status":
         status_lower = new.lower() if new else old.lower()
+        old_lower = old.lower() if old else ""
         if "landed" in status_lower or "arrived" in status_lower:
             actual = _parse(data.get("actual_in"))
             sched = _parse(data.get("scheduled_in"))
@@ -127,7 +128,15 @@ def _simplify_subject(change, data):
                     return "🟢 Early Departure"
                 else:
                     return "🟡 Late Departure"
-            return "🟡 Departure"
+            return "🟢 Departure"
+        if any(x in status_lower for x in ['en route', 'airborne', 'in flight', 'taxiing', 'left gate']):
+            if 'delay' in status_lower or 'late' in status_lower:
+                return "🟡 En Route / Delayed"
+            return "🟢 En Route / On Time"
+        if 'delay' in status_lower or 'late' in status_lower:
+            return "🟡 Delayed"
+        if old_lower == 'scheduled' and status_lower and 'cancel' not in status_lower and 'divert' not in status_lower:
+            return "🟢 Status Update"
     
     # Cancellation
     if label == "Cancellation":
@@ -139,7 +148,11 @@ def _simplify_subject(change, data):
     if arrow and old == "not assigned" and new and new != "not assigned":
         return f"🟢 {label} {new}"
     if arrow and old and new:
-        return f"🟡 {label} Changed"
+        if label.lower().startswith('gate') or label.lower().startswith('terminal'):
+            return f"🟢 {label} Assigned" if old == 'not assigned' or not old else f"🟡 {label} Changed"
+        if 'delay' in new.lower() or 'late' in new.lower() or 'cancel' in new.lower() or 'divert' in new.lower():
+            return f"🟡 {label} Changed"
+        return f"🟢 {label} Changed"
     
     return change
 
