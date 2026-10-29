@@ -148,18 +148,18 @@ def _simplify_subject(change, data):
     if arrow and old == "not assigned" and new and new != "not assigned":
         return f"🟢 {label} {new}"
     if arrow and old and new:
-        if label.lower().startswith('gate') or label.lower().startswith('terminal'):
+        if label.lower().strip().startswith('gate') or label.lower().strip().startswith('terminal') or 'gate' in label.lower() or 'terminal' in label.lower():
             old_clean = str(old).strip().lower()
             new_clean = str(new).strip().lower()
             if old_clean in ('', 'not assigned', 'none', '—'):
-                return f"🟢 {label} Assigned"
+                return f"🟢 {label.strip()} Assigned"
             if new_clean in ('', 'not assigned', 'none', '—'):
-                return f"🟡 {label} Unassigned"
+                return f"🟡 {label.strip()} Unassigned"
             # Moving between existing gates/terminals is inconvenient
-            return f"🟡 {label} Changed"
+            return f"🟡 {label.strip()} Changed"
         if 'delay' in str(new).lower() or 'late' in str(new).lower() or 'cancel' in str(new).lower() or 'divert' in str(new).lower():
-            return f"🟡 {label} Changed"
-        return f"🟢 {label} Changed"
+            return f"🟡 {label.strip()} Changed"
+        return f"🟢 {label.strip()} Changed"
     
     return change
 
