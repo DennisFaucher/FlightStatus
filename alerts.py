@@ -149,7 +149,9 @@ def _simplify_subject(change, data):
         return f"🟢 {label} {new}"
     if arrow and old and new:
         if label.lower().startswith('gate') or label.lower().startswith('terminal'):
-            return f"🟢 {label} Assigned" if old == 'not assigned' or not old else f"🟡 {label} Changed"
+            if old == 'not assigned' or not old:
+                return f"🟢 {label} Assigned"
+            return f"🟢 {label} Changed"  # Gate/terminal changes are informational, not warnings
         if 'delay' in new.lower() or 'late' in new.lower() or 'cancel' in new.lower() or 'divert' in new.lower():
             return f"🟡 {label} Changed"
         return f"🟢 {label} Changed"
